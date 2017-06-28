@@ -24,11 +24,11 @@ class Predicate:
 		(/) Predicate('').render() must be ''
 		(/) p.AND, p.OR supports multiple arguments
 		(/) We handle mixed operator in this way
+		(/) identity:        x v 0 = x, x ^ 1 = x
+		(/) annihilator:     x ^ 0 = 0
 		but rather a v b v c ^ d => (a v b v c) ^ d
 
 		In short, no Boolean algebra here. I mean:
-		(X) identity:        x v 0 = x, x ^ 1 = x
-		(X) annihilator:     x ^ 0 = 0
 		(X) absorption:      x ^ (x v y) = x, x v (x ^ y) = x
 		(X) distributivity:  x v (y ^ z) = (x v y) ^ (y v z)
 		'''
@@ -36,8 +36,8 @@ class Predicate:
 		# preds is tuple
 		# opts is an optional argument pass by name
 		self.preds = list(preds)
-		self.sep = opts['sep'] if 'sep' in opts else '\n'
-		self.operator = opts['operator'] if 'operator' in opts else ''
+		self.sep = opts.get('sep', '\n')
+		self.operator = opts.get('operator', '')
 
 	def _operate(self, preds, operator):
 		if len(preds) == 1 and preds[0] == '':
@@ -53,11 +53,29 @@ class Predicate:
 		return self
 
 	def AND(self, *preds):
-		self._operate(list(preds), operator='AND')
+		# Identity
+		if 'TRUE' in preds:
+			preds = set(preds) - set(['TRUE'])
+			self._operate(list(preds), operator='AND')
+		elif 'FALSE' in preds:
+			self.preds = ['FALSE']
+			self.sep = '\n'
+			self.operator = ''
+		else:
+			self._operate(list(preds), operator='AND')
 		return self
 
 	def OR(self, *preds):
-		self._operate(list(preds), operator='OR')
+		# Identity
+		if 'FALSE' in preds:
+			preds = set(preds) - set(['FALSE'])
+			self._operate(list(preds), operator='OR')
+		elif 'TRUE' in preds:
+			self.preds = ['TRUE']
+			self.sep = '\n'
+			self.operator = ''
+		else:
+			self._operate(list(preds), operator='OR')
 		return self
 
 	def set_operator(self, operator):
@@ -73,6 +91,11 @@ class Predicate:
 	def render(self, is_encapsulate=False, sep=None):
 		sep = self.sep if sep is None else sep
 		# This method convert the Predicate to string
+
+		if len(self.preds) > 1 and self.operator == '':
+			print(self.preds)
+			raise SyntaxError('No operator for multiple predicates')
+
 		_seperator = ' ' + sep + self.operator + ' '
 		if is_encapsulate:
 			return ('(' + _seperator.join(self.preds) + ')').strip()
@@ -94,6 +117,10 @@ if __name__ == '__main__':
 	p[9] = Predicate(*['a!=5', 'b>2'], operator='AND') \
 	.OR(Predicate(*['c<10', 'd%2==0'], operator='AND') \
 	.render(is_encapsulate=True)).render()
+	p[10] = Predicate('a!=5').OR('TRUE').render()
+	p[11] = Predicate('a!=5').OR(*['FALSE','b>5']).render()
+	p[12] = Predicate('a!=5').AND(*['TRUE','b>5']).render()
+	p[13] = Predicate('a!=5').AND('FALSE').render(is_encapsulate=True)
 
 	for key, val in p.iteritems():
 		print('Item %i:\n%s\n' % (key, val))
@@ -107,5 +134,9 @@ if __name__ == '__main__':
 	assert(p[7].replace('\n','') == '(a!=5 AND b>2) OR c<10 OR d%2==0')
 	assert(p[8] == p[7])
 	assert(p[9].replace('\n','') == '(a!=5 AND b>2) OR (c<10 AND d%2==0)')
+	assert(p[10] == 'TRUE')
+	assert(p[11].replace('\n','') == 'a!=5 OR b>5')
+	assert(p[12].replace('\n','') == 'a!=5 AND b>5')
+	assert(p[13] == 'FALSE')
 	
 	print('[INFO] Pass all assertation')
