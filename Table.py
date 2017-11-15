@@ -1,19 +1,17 @@
 #################################################################################################################
-#   Name           : CSVTable.py
+#   Name           : Table.py
 #   Requirement    : python 2
 #   Purpose        : SQL like interface to CSV file
 #################################################################################################################
 
 from __future__ import print_function
 from Predicate import Predicate
-from datetime import datetime
 from copy import copy
 from pprint import pprint
-from rbac_utils import group_by, get_rbac_db_name
 
 import csv
 
-class  CSVTable:
+class  Table:
 
     def __init__(self, collections=[]):
         self.collections = collections
@@ -22,7 +20,7 @@ class  CSVTable:
         headings = []
         for collection in collections:
             if headings and headings != collection.keys():
-                raise ValueError('inconsistence headings in collection supplied to CSVTable')
+                raise ValueError('inconsistence headings in collection supplied to Table')
             headings = collection.keys()
         self.headings = headings
         return
@@ -30,13 +28,24 @@ class  CSVTable:
 
     def _validate_file_obj(self, csv_file_obj):
         if not hasattr(csv_file_obj, 'read'):
-            print('[ERROR] CSVTable.load argument: ', csv_file_obj)
-            raise ValueError('Argument supplied to CSVTable is not an instance of File')
+            print('[ERROR] Table.load argument: ', csv_file_obj)
+            raise ValueError('Argument supplied to Table is not an instance of File')
         return
 
     def _validate_in_headings(self, by):
         if by not in self.headings:
             raise SyntaxError('by argument %s supplied to "by" is not in headings' % by)
+
+    def set_data_type(self, data_types):
+        for k, data_type in data_types.items():
+            if not k in self.headings:
+                raise ValueError('Column %s is not in this table' % k)
+            if not (data_type == float or data_type == int or data_type == str):
+                raise ValueError('Type', data_type, 'is not allowed types which are str, int, float')
+        for row in self.cursor:
+            for k, data_type in data_types.items():
+                row[k] = data_type(row[k])
+        return self
 
     def load(self, csv_file_obj):
         self._validate_file_obj(csv_file_obj)
@@ -89,8 +98,8 @@ class  CSVTable:
         cursor = []
         if self.headings != table_b.headings:
             raise ValueError('Cannot minus table with different headings')
-        if not isinstance(table_b, CSVTable):
-            raise ValueError('argument to CSVTable.minus should be an instance of CSVTable')
+        if not isinstance(table_b, Table):
+            raise ValueError('argument to Table.minus should be an instance of Table')
         print(len(self.cursor))
         print(len(table_b.cursor))
         for row_a in self.cursor:
@@ -125,7 +134,7 @@ class  CSVTable:
     def distinct(self):
         cursor = []
         for c in self.cursor:
-            if c not in cursor: 
+            if c not in cursor:
                 cursor.append(c)
         self.cursor = cursor
         return self
@@ -135,12 +144,12 @@ class  CSVTable:
         sort_key = sorted([k[by] for k in self.cursor])
         cursor = []
         for k in sort_key:
-            #print(CSVTable(self.done()).done())
-            cursor += CSVTable(self.done()).where(lambda row: row[by] == k).done()
+            #print(Table(self.done()).done())
+            cursor += Table(self.done()).where(lambda row: row[by] == k).done()
         self.cursor = cursor
         return self
 
-    ### METHOD BELOW DO NOT RETURN CSVTable INSTANCE
+    ### METHOD BELOW DO NOT RETURN Table INSTANCE
 
     def done(self):
         return copy(self.cursor)
@@ -171,22 +180,32 @@ class  CSVTable:
 
 if __name__ == '__main__':
 
-    table_filter_specs = CSVTable().load(open('./maintain/table_filter_spec.csv', 'rU')).done()
-
-    def set_no_record_h(row):
-        if row['combined_cond'] == 'no record':
-            row['combined_cond'] = 'TRUE'
+    def spell_out(row):
+        spell = []
+        for c in row['num']:
+            options = {
+                    '0' : 'zero',
+                    '1' : 'one',
+                    '2' : 'two',
+                    '3' : 'three',
+                    '4' : 'four',
+                    '5' : 'five',
+                    '6' : 'six',
+                    '7' : 'seven',
+                    '8' : 'eight',
+                    '9' : 'night'}
+            spell.append(options[c])
+        row['num'] = '-'.join(spell)
         return row
-    result2 = CSVTable(table_filter_specs).where(lambda x: x['container_name']=='dep_acct_prod').get_distinct('db_name')
-    assert(result2 == '${var:environment}_curated_dep_db')
-    #csv_table = CSVTable().load(open('./maintain/table_filter_spec.csv', 'rU'))\
-    #        .select('*', where=lambda row: row['container_name'] == 'dep_item' and row['access_level'] == 'H')\
-    #        .transform(set_no_record_h)\
-    #        .key_by('access_level')
-    csv_table = CSVTable(table_filter_specs)\
-            .where(lambda row: row['container_name'] == 'dep_item')\
-            .where(lambda row: row['access_level'] == 'C')\
-            .where(lambda row: row['combined_cond'] != 'no record')\
-            .transform(set_no_record_h)\
-            .key_by('access_level')
-    #pprint(csv_table)
+
+    t1 = Table().load(open('./test.csv', 'r'))\
+    .set_data_type({'alpha':str,'num':int})\
+    .where(lambda row: row['num'] %2 ==0)\
+    .select('num').done()
+
+    t2 = Table().load(open('./test.csv', 'r'))\
+    .transform(spell_out)\
+    .key_by('alpha')
+
+    pprint(t1)
+    pprint(t2)
